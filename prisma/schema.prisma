@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  name      String
+  role      Role       @default(STUDENT)
+  class     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  
+  studentExams   StudentExam[]
+  studentAnswers StudentAnswer[]
+  createdExams   Exam[]         @relation("CreatedBy")
+  createdQuestions Question[]   @relation("CreatedBy")
+  
+  @@index([email])
+  @@index([role])
+}
+
+model Exam {
+  id              String   @id @default(cuid())
+  title           String
+  subject         String
+  description     String?
+  duration        Int      @default(60)  # minutes
+  passingScore    Int      @default(70)  # percentage
+  totalPoints     Int      @default(100)
+  isPublished     Boolean  @default(false)
+  allowReview     Boolean  @default(true)
+  shuffleQuestions Boolean @default(false)
+  createdBy       String
+  creator         User     @relation("CreatedBy", fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  questions      Question[]
+  studentExams   StudentExam[]
+  
+  @@index([createdBy])
+  @@index([isPublished])
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  
+  type      QuestionType  # MULTIPLE_CHOICE, ESSAY, TRUE_FALSE, MATCHING
+  question  String        # Main question text
+  points    Int           @default(1)
+  order     Int           @default(0)
+  
+  # Multiple Choice & True/False options
+  options   Option[]
+  correctAnswer String?   # For multiple choice & true/false
+  
+  # Matching test
+  matchingPairs MatchingPair[]
+  
+  createdBy String
+  creator   User     @relation("CreatedBy", fields: [createdBy], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  studentAnswers StudentAnswer[]
+  
+  @@index([examId])
+  @@index([type])
+}
+
+model Option {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  label      String   # A, B, C, D, E
+  text       String   # Option text
+  order      Int      @default(0)
+  
+  @@index([questionId])
+}
+
+model MatchingPair {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  leftItem   String   # Item to match
+  rightItem  String   # Correct match
+  order      Int      @default(0)
+  
+  @@index([questionId])
+}
+
+model StudentExam {
+  id           String   @id @default(cuid())
+  studentId    String
+  student      User     @relation(fields: [studentId], references: [id])
+  examId       String
+  exam         Exam     @relation(fields: [examId], references: [id])
+  
+  status       ExamStatus @default(NOT_STARTED)  # NOT_STARTED, IN_PROGRESS, SUBMITTED, GRADED
+  startedAt    DateTime?
+  submittedAt  DateTime?
+  timeSpent    Int?       # seconds
+  
+  result       ExamResult?
+  studentAnswers StudentAnswer[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([studentId, examId])
+  @@index([studentId])
+  @@index([examId])
+  @@index([status])
+}
+
+model StudentAnswer {
+  id              String   @id @default(cuid())
+  studentExamId   String
+  studentExam     StudentExam @relation(fields: [studentExamId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question @relation(fields: [questionId], references: [id])
+  
+  # Answer content (varies by question type)
+  answerText      String?          # For essay and true/false
+  selectedOption  String?          # For multiple choice
+  matchingAnswers MatchingAnswer[]  # For matching test
+  
+  isCorrect       Boolean?
+  points          Int?             # Points earned
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([studentExamId, questionId])
+  @@index([studentExamId])
+  @@index([questionId])
+}
+
+model MatchingAnswer {
+  id            String   @id @default(cuid())
+  studentAnswerId String
+  studentAnswer StudentAnswer @relation(fields: [studentAnswerId], references: [id], onDelete: Cascade)
+  
+  leftItem      String
+  selectedRight String
+  isCorrect     Boolean
+  
+  @@index([studentAnswerId])
+}
+
+model ExamResult {
+  id            String   @id @default(cuid())
+  studentExamId String   @unique
+  studentExam   StudentExam @relation(fields: [studentExamId], references: [id], onDelete: Cascade)
+  
+  totalPoints   Int
+  earnedPoints  Int
+  percentage    Float
+  grade         String   # A, B, C, D, F
+  passed        Boolean
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([studentExamId])
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  ESSAY
+  TRUE_FALSE
+  MATCHING
+}
+
+enum ExamStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
